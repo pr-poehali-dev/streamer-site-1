@@ -13,7 +13,7 @@ export default function Admin() {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  const [stream, setStream] = useState<StreamStatus>({ is_live: false, title: "", game: "", viewers: 0, stream_key: "", key_expires_at: "" });
+  const [stream, setStream] = useState<StreamStatus>({ is_live: false, title: "", game: "", viewers: 0, stream_url: "", stream_key: "", key_expires_at: "" });
   const [schedule, setSchedule] = useState<ScheduleRow[]>([]);
   const [donates, setDonates] = useState<Donate[]>([]);
   const [chat, setChat] = useState<ChatMsg[]>([]);
@@ -52,7 +52,7 @@ export default function Admin() {
 
   const saveStream = async () => {
     setSaving(true);
-    await api("update_stream", token, { title: stream.title, game: stream.game });
+    await api("update_stream", token, { title: stream.title, game: stream.game, stream_url: stream.stream_url });
     setSaving(false);
   };
 

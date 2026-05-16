@@ -7,6 +7,7 @@ export interface StreamStatus {
   title: string;
   game: string;
   viewers: number;
+  stream_url: string;
   stream_key: string;
   key_expires_at: string;
 }

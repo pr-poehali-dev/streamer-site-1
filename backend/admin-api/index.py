@@ -107,13 +107,14 @@ def handler(event: dict, context) -> dict:
         # Авторотация ключа
         stream_key, key_expires_at = maybe_rotate_key(conn)
 
-        rows = conn.run(f"SELECT is_live, title, game, viewers FROM {SCHEMA}.stream_status LIMIT 1")
+        rows = conn.run(f"SELECT is_live, title, game, viewers, stream_url FROM {SCHEMA}.stream_status LIMIT 1")
         r = rows[0]
         stream = {
             "is_live": r[0],
             "title": r[1],
             "game": r[2],
             "viewers": r[3],
+            "stream_url": r[4] or "",
             "stream_key": stream_key,
             "key_expires_at": str(key_expires_at) if key_expires_at else "",
         }
@@ -148,9 +149,10 @@ def handler(event: dict, context) -> dict:
     # --- UPDATE STREAM INFO ---
     if action == "update_stream":
         conn.run(
-            f"UPDATE {SCHEMA}.stream_status SET title=:title, game=:game, updated_at=NOW()",
+            f"UPDATE {SCHEMA}.stream_status SET title=:title, game=:game, stream_url=:url, updated_at=NOW()",
             title=body.get("title", ""),
             game=body.get("game", ""),
+            url=body.get("stream_url", ""),
         )
         return resp(200, {"ok": True})
 

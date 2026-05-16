@@ -31,13 +31,20 @@ export default function AdminStreamTab({
   onRegenerateKey,
 }: AdminStreamTabProps) {
   const [keyVisible, setKeyVisible] = useState(false);
-  const [copied, setCopied] = useState(false);
+  const [copiedKey, setCopiedKey] = useState(false);
+  const [copiedUrl, setCopiedUrl] = useState(false);
   const timeLeft = formatTimeLeft(stream.key_expires_at);
 
   const copyKey = () => {
     navigator.clipboard.writeText(stream.stream_key);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    setCopiedKey(true);
+    setTimeout(() => setCopiedKey(false), 2000);
+  };
+
+  const copyUrl = () => {
+    navigator.clipboard.writeText(stream.stream_url);
+    setCopiedUrl(true);
+    setTimeout(() => setCopiedUrl(false), 2000);
   };
 
   return (
@@ -121,33 +128,64 @@ export default function AdminStreamTab({
         </div>
 
         <p className="text-xs" style={{ color: "rgba(255,255,255,0.4)" }}>
-          Используй в OBS: Настройки → Трансляция → Ключ потока. Ключ автоматически меняется каждые 2 дня.
+          В OBS: Настройки → Трансляция → Сервис: Другой. Вставь URL и ключ ниже. Ключ меняется каждые 2 дня.
         </p>
 
-        {/* Key display */}
-        <div
-          className="flex items-center gap-2 px-4 py-3 rounded-lg font-mono text-sm"
-          style={{ background: "rgba(0,0,0,0.3)", border: "1px solid rgba(0,255,136,0.2)" }}
-        >
-          <span className="flex-1 tracking-widest" style={{ color: keyVisible ? "var(--neon-green)" : "rgba(255,255,255,0.2)", letterSpacing: keyVisible ? "0.15em" : "0.4em" }}>
-            {keyVisible ? stream.stream_key : "•".repeat(25)}
-          </span>
-          <button
-            onClick={() => setKeyVisible(!keyVisible)}
-            className="p-1.5 rounded transition-all hover:scale-110 flex-shrink-0"
-            style={{ color: "rgba(255,255,255,0.4)" }}
-            title={keyVisible ? "Скрыть" : "Показать"}
+        {/* URL сервера */}
+        <div>
+          <div className="text-xs mb-1.5 font-orbitron" style={{ color: "rgba(255,255,255,0.35)" }}>URL СЕРВЕРА</div>
+          <div
+            className="flex items-center gap-2 px-4 py-3 rounded-lg font-mono text-sm"
+            style={{ background: "rgba(0,0,0,0.3)", border: "1px solid rgba(0,255,255,0.2)" }}
           >
-            <Icon name={keyVisible ? "EyeOff" : "Eye"} size={14} />
-          </button>
-          <button
-            onClick={copyKey}
-            className="p-1.5 rounded transition-all hover:scale-110 flex-shrink-0"
-            style={{ color: copied ? "var(--neon-green)" : "rgba(255,255,255,0.4)" }}
-            title="Копировать"
+            <span className="flex-1 truncate" style={{ color: "var(--neon-cyan)" }}>
+              {stream.stream_url || "rtmp://..."}
+            </span>
+            <button
+              onClick={copyUrl}
+              className="p-1.5 rounded transition-all hover:scale-110 flex-shrink-0"
+              style={{ color: copiedUrl ? "var(--neon-cyan)" : "rgba(255,255,255,0.4)" }}
+              title="Копировать URL"
+            >
+              <Icon name={copiedUrl ? "Check" : "Copy"} size={14} />
+            </button>
+          </div>
+          <input
+            value={stream.stream_url}
+            onChange={(e) => onStreamChange({ ...stream, stream_url: e.target.value })}
+            placeholder="rtmp://stream.example.com/live"
+            className="w-full mt-2 px-4 py-2.5 rounded-lg outline-none text-sm font-mono"
+            style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(0,255,255,0.2)", color: "rgba(255,255,255,0.7)" }}
+          />
+        </div>
+
+        {/* Ключ потока */}
+        <div>
+          <div className="text-xs mb-1.5 font-orbitron" style={{ color: "rgba(255,255,255,0.35)" }}>КЛЮЧ ПОТОКА (KEY)</div>
+          <div
+            className="flex items-center gap-2 px-4 py-3 rounded-lg font-mono text-sm"
+            style={{ background: "rgba(0,0,0,0.3)", border: "1px solid rgba(0,255,136,0.2)" }}
           >
-            <Icon name={copied ? "Check" : "Copy"} size={14} />
-          </button>
+            <span className="flex-1 tracking-widest" style={{ color: keyVisible ? "var(--neon-green)" : "rgba(255,255,255,0.2)", letterSpacing: keyVisible ? "0.15em" : "0.4em" }}>
+              {keyVisible ? stream.stream_key : "•".repeat(25)}
+            </span>
+            <button
+              onClick={() => setKeyVisible(!keyVisible)}
+              className="p-1.5 rounded transition-all hover:scale-110 flex-shrink-0"
+              style={{ color: "rgba(255,255,255,0.4)" }}
+              title={keyVisible ? "Скрыть" : "Показать"}
+            >
+              <Icon name={keyVisible ? "EyeOff" : "Eye"} size={14} />
+            </button>
+            <button
+              onClick={copyKey}
+              className="p-1.5 rounded transition-all hover:scale-110 flex-shrink-0"
+              style={{ color: copiedKey ? "var(--neon-green)" : "rgba(255,255,255,0.4)" }}
+              title="Копировать ключ"
+            >
+              <Icon name={copiedKey ? "Check" : "Copy"} size={14} />
+            </button>
+          </div>
         </div>
 
         {/* Regenerate */}
