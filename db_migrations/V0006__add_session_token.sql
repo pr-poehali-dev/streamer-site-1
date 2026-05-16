@@ -1,0 +1,2 @@
+ALTER TABLE t_p62247026_streamer_site_1.users
+  ADD COLUMN IF NOT EXISTS session_token VARCHAR(255) NOT NULL DEFAULT '';

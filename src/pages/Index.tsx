@@ -4,15 +4,9 @@ import HeroSection from "@/components/HeroSection";
 import StreamsSection from "@/components/StreamsSection";
 import AboutSection from "@/components/AboutSection";
 import DonateSocialContacts from "@/components/DonateSocialContacts";
-
-const CHAT_MESSAGES_INITIAL = [
-  { id: 1, user: "KiraStar", color: "#a855f7", text: "Погнали! 🔥", time: "19:01" },
-  { id: 2, user: "DarkFox88", color: "#00ffff", text: "Го стрим!", time: "19:02" },
-  { id: 3, user: "NightOwl", color: "#00ff88", text: "Привет всем! Давно не заходил", time: "19:03" },
-  { id: 4, user: "CyberWolf", color: "#ff00aa", text: "Топ стример 🎮", time: "19:04" },
-  { id: 5, user: "xXShadow", color: "#a855f7", text: "Когда рейд?", time: "19:05" },
-  { id: 6, user: "L1ghtning", color: "#00ffff", text: "Погнали мочить!", time: "19:06" },
-];
+import AuthModal from "@/components/auth/AuthModal";
+import UserProfileModal from "@/components/auth/UserProfileModal";
+import { useAuth } from "@/hooks/useAuth";
 
 const navItems = [
   { id: "streams", label: "Трансляции" },
@@ -23,27 +17,14 @@ const navItems = [
 ];
 
 export default function Index() {
-  const [chatMessages, setChatMessages] = useState(CHAT_MESSAGES_INITIAL);
-  const [chatInput, setChatInput] = useState("");
-  const [chatUsername, setChatUsername] = useState("Гость");
+  const { token, user, login, logout, updateUser } = useAuth();
+  const [authOpen, setAuthOpen] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
+
   const [donateAmount, setDonateAmount] = useState(100);
   const [donateMessage, setDonateMessage] = useState("");
   const [donateName, setDonateName] = useState("");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-
-  const sendMessage = () => {
-    if (!chatInput.trim()) return;
-    const colors = ["#a855f7", "#00ffff", "#00ff88", "#ff00aa"];
-    const newMsg = {
-      id: chatMessages.length + 1,
-      user: chatUsername || "Гость",
-      color: colors[Math.floor(Math.random() * colors.length)],
-      text: chatInput,
-      time: new Date().toLocaleTimeString("ru", { hour: "2-digit", minute: "2-digit" }),
-    };
-    setChatMessages((prev) => [...prev, newMsg]);
-    setChatInput("");
-  };
 
   const scrollTo = (id: string) => {
     document.getElementById(id)?.scrollIntoView({ behavior: "smooth" });
@@ -87,11 +68,58 @@ export default function Index() {
           ))}
         </div>
 
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3">
+          <div className="hidden sm:flex items-center gap-2">
             <div className="w-2 h-2 rounded-full live-dot" style={{ background: "#ff0000" }} />
             <span className="text-xs font-orbitron text-red-400 tracking-wider">LIVE</span>
           </div>
+
+          {/* Auth area */}
+          {user ? (
+            <button
+              onClick={() => setProfileOpen(true)}
+              className="flex items-center gap-2 pl-1 pr-3 py-1 rounded-full transition-all hover:scale-105"
+              style={{
+                background: "rgba(255,255,255,0.04)",
+                border: `1px solid ${user.color}50`,
+              }}
+            >
+              <div
+                className="w-7 h-7 rounded-full overflow-hidden flex items-center justify-center font-orbitron font-bold text-xs flex-shrink-0"
+                style={{
+                  background: user.avatar_url ? "transparent" : `${user.color}30`,
+                  border: `1px solid ${user.color}`,
+                  color: user.color,
+                }}
+              >
+                {user.avatar_url ? (
+                  <img src={user.avatar_url} alt={user.username} className="w-full h-full object-cover" />
+                ) : (
+                  user.username[0]?.toUpperCase()
+                )}
+              </div>
+              <span
+                className="font-orbitron font-bold text-xs hidden sm:inline max-w-[100px] truncate"
+                style={{ color: user.color }}
+              >
+                {user.username}
+              </span>
+            </button>
+          ) : (
+            <button
+              onClick={() => setAuthOpen(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-orbitron tracking-wider transition-all hover:scale-105"
+              style={{
+                background: "rgba(168,85,247,0.15)",
+                border: "1px solid var(--neon-purple)",
+                color: "var(--neon-purple)",
+              }}
+            >
+              <Icon name="LogIn" size={13} />
+              <span className="hidden sm:inline">ВОЙТИ</span>
+            </button>
+          )}
+
           <button className="md:hidden" onClick={() => setMobileMenuOpen(!mobileMenuOpen)} style={{ color: "var(--neon-purple)" }}>
             <Icon name={mobileMenuOpen ? "X" : "Menu"} size={22} />
           </button>
@@ -115,14 +143,7 @@ export default function Index() {
 
       <div style={{ position: "relative", zIndex: 1 }}>
         <HeroSection scrollTo={scrollTo} />
-        <StreamsSection
-          chatMessages={chatMessages}
-          chatInput={chatInput}
-          chatUsername={chatUsername}
-          setChatInput={setChatInput}
-          setChatUsername={setChatUsername}
-          sendMessage={sendMessage}
-        />
+        <StreamsSection user={user} token={token} onOpenAuth={() => setAuthOpen(true)} />
         <AboutSection />
         <DonateSocialContacts
           donateAmount={donateAmount}
@@ -133,6 +154,22 @@ export default function Index() {
           setDonateName={setDonateName}
         />
       </div>
+
+      <AuthModal
+        open={authOpen}
+        onClose={() => setAuthOpen(false)}
+        onSuccess={login}
+      />
+      {user && token && (
+        <UserProfileModal
+          open={profileOpen}
+          onClose={() => setProfileOpen(false)}
+          token={token}
+          user={user}
+          onUpdate={updateUser}
+          onLogout={logout}
+        />
+      )}
     </div>
   );
 }

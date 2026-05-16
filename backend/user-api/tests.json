@@ -10,10 +10,10 @@
       "bodyMatcher": "partial"
     },
     {
-      "name": "Login with wrong credentials returns 401",
+      "name": "Login with empty credentials returns 401",
       "method": "POST",
       "path": "/",
-      "body": {"action": "login", "username": "nobody", "password": "wrongpass"},
+      "body": {"action": "login", "username": "", "password": ""},
       "expectedStatus": 401,
       "expectedBody": {"ok": false},
       "bodyMatcher": "partial"

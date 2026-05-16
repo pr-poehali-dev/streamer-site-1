@@ -43,17 +43,26 @@ def hash_password(password: str) -> str:
     return hashlib.sha256(password.encode()).hexdigest()
 
 
+def user_row_to_dict(r):
+    return {
+        "id": r[0],
+        "username": r[1],
+        "color": r[2],
+        "avatar_url": r[3],
+        "created_at": str(r[4]),
+    }
+
+
 def get_user_by_token(conn, token: str):
     if not token:
         return None
     rows = conn.run(
-        f"SELECT id, username, color, location, avatar_url, created_at FROM {SCHEMA}.users WHERE session_token=:t",
+        f"SELECT id, username, color, avatar_url, created_at FROM {SCHEMA}.users WHERE session_token=:t",
         t=token,
     )
     if not rows:
         return None
-    r = rows[0]
-    return {"id": r[0], "username": r[1], "color": r[2], "location": r[3], "avatar_url": r[4], "created_at": r[5]}
+    return user_row_to_dict(rows[0])
 
 
 def handler(event: dict, context) -> dict:
@@ -68,8 +77,6 @@ def handler(event: dict, context) -> dict:
     headers = event.get("headers") or {}
     token = headers.get("x-session-token", "") or headers.get("X-Session-Token", "")
 
-    conn = get_conn()
-
     # --- REGISTER ---
     if action == "register":
         username = body.get("username", "").strip()
@@ -79,30 +86,40 @@ def handler(event: dict, context) -> dict:
             return resp(400, {"ok": False, "error": "Введи никнейм и пароль"})
         if len(username) < 3:
             return resp(400, {"ok": False, "error": "Никнейм минимум 3 символа"})
+        if len(username) > 32:
+            return resp(400, {"ok": False, "error": "Никнейм максимум 32 символа"})
         if len(password) < 4:
             return resp(400, {"ok": False, "error": "Пароль минимум 4 символа"})
 
+        conn = get_conn()
         existing = conn.run(f"SELECT id FROM {SCHEMA}.users WHERE username=:u", u=username)
         if existing:
             return resp(400, {"ok": False, "error": "Никнейм уже занят"})
 
         pw_hash = hash_password(password)
         session = secrets.token_hex(32)
+        # случайный неоновый цвет
+        palette = ["#a855f7", "#00ffff", "#00ff88", "#ff00aa", "#ffd700", "#ff6b6b"]
+        color = palette[len(username) % len(palette)]
         conn.run(
-            f"INSERT INTO {SCHEMA}.users (username, password_hash, session_token) VALUES (:u,:p,:s)",
-            u=username, p=pw_hash, s=session,
+            f"INSERT INTO {SCHEMA}.users (username, password_hash, session_token, color) VALUES (:u,:p,:s,:c)",
+            u=username, p=pw_hash, s=session, c=color,
         )
-        rows = conn.run(f"SELECT id, username, color, location, avatar_url, created_at FROM {SCHEMA}.users WHERE session_token=:s", s=session)
-        r = rows[0]
-        user = {"id": r[0], "username": r[1], "color": r[2], "location": r[3], "avatar_url": r[4], "created_at": r[5]}
-        return resp(200, {"ok": True, "token": session, "user": user})
+        rows = conn.run(
+            f"SELECT id, username, color, avatar_url, created_at FROM {SCHEMA}.users WHERE session_token=:s",
+            s=session,
+        )
+        return resp(200, {"ok": True, "token": session, "user": user_row_to_dict(rows[0])})
 
     # --- LOGIN ---
     if action == "login":
         username = body.get("username", "").strip()
         password = body.get("password", "")
+        if not username or not password:
+            return resp(401, {"ok": False, "error": "Неверный никнейм или пароль"})
         pw_hash = hash_password(password)
 
+        conn = get_conn()
         rows = conn.run(
             f"SELECT id FROM {SCHEMA}.users WHERE username=:u AND password_hash=:p",
             u=username, p=pw_hash,
@@ -113,33 +130,39 @@ def handler(event: dict, context) -> dict:
         user_id = rows[0][0]
         session = secrets.token_hex(32)
         conn.run(f"UPDATE {SCHEMA}.users SET session_token=:s WHERE id=:id", s=session, id=user_id)
-        rows2 = conn.run(f"SELECT id, username, color, location, avatar_url, created_at FROM {SCHEMA}.users WHERE id=:id", id=user_id)
-        r = rows2[0]
-        user = {"id": r[0], "username": r[1], "color": r[2], "location": r[3], "avatar_url": r[4], "created_at": r[5]}
-        return resp(200, {"ok": True, "token": session, "user": user})
+        rows2 = conn.run(
+            f"SELECT id, username, color, avatar_url, created_at FROM {SCHEMA}.users WHERE id=:id",
+            id=user_id,
+        )
+        return resp(200, {"ok": True, "token": session, "user": user_row_to_dict(rows2[0])})
 
-    # --- ME (получить профиль по токену) ---
+    # --- ME ---
     if action == "me":
+        if not token:
+            return resp(401, {"ok": False, "error": "Не авторизован"})
+        conn = get_conn()
         user = get_user_by_token(conn, token)
         if not user:
             return resp(401, {"ok": False, "error": "Не авторизован"})
         return resp(200, {"ok": True, "user": user})
 
-    # --- UPDATE PROFILE ---
+    # --- UPDATE PROFILE (цвет) ---
     if action == "update_profile":
+        if not token:
+            return resp(401, {"ok": False, "error": "Не авторизован"})
+        conn = get_conn()
         user = get_user_by_token(conn, token)
         if not user:
             return resp(401, {"ok": False, "error": "Не авторизован"})
         color = body.get("color", user["color"])
-        location = body.get("location", user["location"])
-        conn.run(
-            f"UPDATE {SCHEMA}.users SET color=:c, location=:l WHERE id=:id",
-            c=color, l=location, id=user["id"],
-        )
+        conn.run(f"UPDATE {SCHEMA}.users SET color=:c WHERE id=:id", c=color, id=user["id"])
         return resp(200, {"ok": True})
 
     # --- UPLOAD AVATAR ---
     if action == "upload_avatar":
+        if not token:
+            return resp(401, {"ok": False, "error": "Не авторизован"})
+        conn = get_conn()
         user = get_user_by_token(conn, token)
         if not user:
             return resp(401, {"ok": False, "error": "Не авторизован"})
@@ -149,8 +172,12 @@ def handler(event: dict, context) -> dict:
         if not image_b64:
             return resp(400, {"ok": False, "error": "Нет данных изображения"})
 
+        # убрать data:image/...;base64,
+        if "," in image_b64:
+            image_b64 = image_b64.split(",", 1)[1]
+
         image_data = base64.b64decode(image_b64)
-        key = f"avatars/user_{user['id']}.{ext}"
+        key = f"avatars/user_{user['id']}_{secrets.token_hex(4)}.{ext}"
         s3 = boto3.client(
             "s3",
             endpoint_url="https://bucket.poehali.dev",
@@ -158,30 +185,52 @@ def handler(event: dict, context) -> dict:
             aws_secret_access_key=os.environ["AWS_SECRET_ACCESS_KEY"],
         )
         s3.put_object(Bucket="files", Key=key, Body=image_data, ContentType=f"image/{ext}")
-        avatar_url = f"https://cdn.poehali.dev/projects/{os.environ['AWS_ACCESS_KEY_ID']}/files/{key}"
+        avatar_url = f"https://cdn.poehali.dev/projects/{os.environ['AWS_ACCESS_KEY_ID']}/bucket/{key}"
         conn.run(f"UPDATE {SCHEMA}.users SET avatar_url=:url WHERE id=:id", url=avatar_url, id=user["id"])
         return resp(200, {"ok": True, "avatar_url": avatar_url})
 
     # --- SEND CHAT ---
     if action == "send_chat":
+        if not token:
+            return resp(401, {"ok": False, "error": "Войди, чтобы писать в чат"})
+        conn = get_conn()
         user = get_user_by_token(conn, token)
         if not user:
             return resp(401, {"ok": False, "error": "Войди, чтобы писать в чат"})
         text = body.get("text", "").strip()
         if not text:
             return resp(400, {"ok": False, "error": "Пустое сообщение"})
+        if len(text) > 500:
+            return resp(400, {"ok": False, "error": "Слишком длинное сообщение"})
         conn.run(
             f"INSERT INTO {SCHEMA}.chat_messages (username, color, message, user_id) VALUES (:u,:c,:m,:uid)",
             u=user["username"], c=user["color"], m=text, uid=user["id"],
         )
         return resp(200, {"ok": True})
 
-    # --- GET CHAT ---
+    # --- GET CHAT (с аватарами через JOIN) ---
     if action == "get_chat":
+        conn = get_conn()
         rows = conn.run(
-            f"SELECT id, username, color, message, is_hidden, created_at FROM {SCHEMA}.chat_messages WHERE is_hidden=FALSE ORDER BY created_at DESC LIMIT 80"
+            f"""
+            SELECT m.id, m.username, m.color, m.message, m.created_at, u.avatar_url
+            FROM {SCHEMA}.chat_messages m
+            LEFT JOIN {SCHEMA}.users u ON u.id = m.user_id
+            WHERE m.is_hidden = FALSE
+            ORDER BY m.created_at DESC LIMIT 80
+            """
         )
-        chat = [{"id": r[0], "user": r[1], "color": r[2], "text": r[3], "is_hidden": r[4], "created_at": str(r[5])} for r in rows]
+        chat = [
+            {
+                "id": r[0],
+                "user": r[1],
+                "color": r[2],
+                "text": r[3],
+                "created_at": str(r[4]),
+                "avatar_url": r[5] or "",
+            }
+            for r in rows
+        ]
         chat.reverse()
         return resp(200, {"ok": True, "chat": chat})
 
