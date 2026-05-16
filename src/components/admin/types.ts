@@ -8,6 +8,7 @@ export interface StreamStatus {
   game: string;
   viewers: number;
   stream_key: string;
+  key_expires_at: string;
 }
 
 export interface ScheduleRow {

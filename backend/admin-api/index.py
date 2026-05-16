@@ -2,14 +2,20 @@
 Панель управления стримера — API для /admin.
 Методы: login, get_data, toggle_stream, update_stream,
         update_schedule, delete_schedule, mark_donate_read,
-        hide_chat_message, send_chat_message.
+        hide_chat_message, send_chat_message, regenerate_key.
+Stream key: 25 символов, автоматически меняется каждые 2 дня.
 """
 import json
 import os
+import secrets
+import string
+from datetime import datetime, timedelta, timezone
 import pg8000.native as pg8000
 from urllib.parse import urlparse
 
 SCHEMA = os.environ.get("MAIN_DB_SCHEMA", "t_p62247026_streamer_site_1")
+KEY_LENGTH = 25
+KEY_TTL_DAYS = 2
 
 CORS_HEADERS = {
     "Access-Control-Allow-Origin": "*",
@@ -42,6 +48,36 @@ def check_token(headers):
     return token == os.environ.get("ADMIN_PASSWORD", "")
 
 
+def gen_stream_key():
+    alphabet = string.ascii_letters + string.digits
+    return "".join(secrets.choice(alphabet) for _ in range(KEY_LENGTH))
+
+
+def maybe_rotate_key(conn):
+    """Если ключ просрочен — генерируем новый, возвращаем актуальный ключ и expires_at."""
+    rows = conn.run(f"SELECT stream_key, key_expires_at FROM {SCHEMA}.stream_status LIMIT 1")
+    if not rows:
+        return "", None
+    current_key, expires_at = rows[0]
+
+    now = datetime.now(timezone.utc)
+    # expires_at из БД может быть без tzinfo
+    if expires_at and expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+
+    need_rotate = (not current_key) or (expires_at is None) or (now >= expires_at)
+
+    if need_rotate:
+        new_key = gen_stream_key()
+        new_expires = now + timedelta(days=KEY_TTL_DAYS)
+        conn.run(
+            f"UPDATE {SCHEMA}.stream_status SET stream_key=:k, key_expires_at=:e",
+            k=new_key, e=new_expires,
+        )
+        return new_key, new_expires
+    return current_key, expires_at
+
+
 def handler(event: dict, context) -> dict:
     if event.get("httpMethod") == "OPTIONS":
         return {"statusCode": 200, "headers": CORS_HEADERS, "body": ""}
@@ -53,7 +89,7 @@ def handler(event: dict, context) -> dict:
     action = body.get("action") or (event.get("queryStringParameters") or {}).get("action", "")
     headers = event.get("headers") or {}
 
-    # --- LOGIN (не требует токена) ---
+    # --- LOGIN ---
     if action == "login":
         password = body.get("password", "")
         admin_pwd = os.environ.get("ADMIN_PASSWORD", "")
@@ -61,7 +97,6 @@ def handler(event: dict, context) -> dict:
             return resp(200, {"ok": True, "token": password})
         return resp(401, {"ok": False, "error": "Неверный пароль"})
 
-    # Все остальные действия требуют токен
     if not check_token(headers):
         return resp(401, {"ok": False, "error": "Нет доступа"})
 
@@ -69,9 +104,19 @@ def handler(event: dict, context) -> dict:
 
     # --- GET ALL DATA ---
     if action == "get_data":
-        rows = conn.run(f"SELECT is_live, title, game, viewers, stream_key FROM {SCHEMA}.stream_status LIMIT 1")
+        # Авторотация ключа
+        stream_key, key_expires_at = maybe_rotate_key(conn)
+
+        rows = conn.run(f"SELECT is_live, title, game, viewers FROM {SCHEMA}.stream_status LIMIT 1")
         r = rows[0]
-        stream = {"is_live": r[0], "title": r[1], "game": r[2], "viewers": r[3], "stream_key": r[4]}
+        stream = {
+            "is_live": r[0],
+            "title": r[1],
+            "game": r[2],
+            "viewers": r[3],
+            "stream_key": stream_key,
+            "key_expires_at": str(key_expires_at) if key_expires_at else "",
+        }
 
         rows = conn.run(f"SELECT id, day_short, time_msk, game, is_active FROM {SCHEMA}.schedule ORDER BY sort_order")
         schedule = [{"id": r[0], "day": r[1], "time": r[2], "game": r[3], "is_active": r[4]} for r in rows]
@@ -84,6 +129,16 @@ def handler(event: dict, context) -> dict:
 
         return resp(200, {"ok": True, "stream": stream, "schedule": schedule, "donates": donates, "chat": chat})
 
+    # --- REGENERATE KEY MANUALLY ---
+    if action == "regenerate_key":
+        new_key = gen_stream_key()
+        new_expires = datetime.now(timezone.utc) + timedelta(days=KEY_TTL_DAYS)
+        conn.run(
+            f"UPDATE {SCHEMA}.stream_status SET stream_key=:k, key_expires_at=:e",
+            k=new_key, e=new_expires,
+        )
+        return resp(200, {"ok": True, "stream_key": new_key, "key_expires_at": str(new_expires)})
+
     # --- TOGGLE STREAM ---
     if action == "toggle_stream":
         conn.run(f"UPDATE {SCHEMA}.stream_status SET is_live = NOT is_live, updated_at = NOW()")
@@ -93,10 +148,9 @@ def handler(event: dict, context) -> dict:
     # --- UPDATE STREAM INFO ---
     if action == "update_stream":
         conn.run(
-            f"UPDATE {SCHEMA}.stream_status SET title=:title, game=:game, stream_key=:key, updated_at=NOW()",
+            f"UPDATE {SCHEMA}.stream_status SET title=:title, game=:game, updated_at=NOW()",
             title=body.get("title", ""),
             game=body.get("game", ""),
-            key=body.get("stream_key", ""),
         )
         return resp(200, {"ok": True})
 

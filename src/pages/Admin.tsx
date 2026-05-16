@@ -13,7 +13,7 @@ export default function Admin() {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  const [stream, setStream] = useState<StreamStatus>({ is_live: false, title: "", game: "", viewers: 0, stream_key: "" });
+  const [stream, setStream] = useState<StreamStatus>({ is_live: false, title: "", game: "", viewers: 0, stream_key: "", key_expires_at: "" });
   const [schedule, setSchedule] = useState<ScheduleRow[]>([]);
   const [donates, setDonates] = useState<Donate[]>([]);
   const [chat, setChat] = useState<ChatMsg[]>([]);
@@ -52,8 +52,13 @@ export default function Admin() {
 
   const saveStream = async () => {
     setSaving(true);
-    await api("update_stream", token, { title: stream.title, game: stream.game, stream_key: stream.stream_key });
+    await api("update_stream", token, { title: stream.title, game: stream.game });
     setSaving(false);
+  };
+
+  const regenerateKey = async () => {
+    const res = await api("regenerate_key", token);
+    if (res.ok) setStream((s) => ({ ...s, stream_key: res.stream_key, key_expires_at: res.key_expires_at }));
   };
 
   const saveScheduleRow = async (row: ScheduleRow) => {
@@ -110,6 +115,7 @@ export default function Admin() {
             onToggle={toggleStream}
             onStreamChange={setStream}
             onSave={saveStream}
+            onRegenerateKey={regenerateKey}
           />
         )}
         {tab === "schedule" && (
