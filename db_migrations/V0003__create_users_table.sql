@@ -1,0 +1,8 @@
+CREATE TABLE IF NOT EXISTS t_p62247026_streamer_site_1.users (
+  id SERIAL PRIMARY KEY,
+  username VARCHAR(32) NOT NULL UNIQUE,
+  password_hash VARCHAR(255) NOT NULL,
+  color VARCHAR(20) NOT NULL DEFAULT '#a855f7',
+  avatar_url VARCHAR(500) NOT NULL DEFAULT '',
+  created_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
